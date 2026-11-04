@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">AdBlocker-thinkgood</string>
+    <string name="tile_label">AdGuard DNS</string>
+</resources>
