@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_desc_5x1"
+    android:initialLayout="@layout/widget_5x1"
+    android:minWidth="320dp"
+    android:minHeight="40dp"
+    android:minResizeWidth="320dp"
+    android:minResizeHeight="40dp"
+    android:resizeMode="none"
+    android:targetCellWidth="5"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen" />

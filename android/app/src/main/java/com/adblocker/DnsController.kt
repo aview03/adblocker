@@ -1,4 +1,4 @@
-package com.thinkgood.adblocker
+package com.adblocker
 
 import android.content.Context
 import android.content.pm.PackageManager
@@ -27,7 +27,7 @@ enum class Provider(
 
 /** Android 의 "비공개 DNS(Private DNS)" 설정을 직접 바꾼다. */
 object DnsController {
-    const val PACKAGE = "com.thinkgood.adblocker"
+    const val PACKAGE = "com.adblocker"
     const val PERMISSION = "android.permission.WRITE_SECURE_SETTINGS"
     const val ADB_COMMAND = "adb shell pm grant $PACKAGE $PERMISSION"
 
@@ -47,6 +47,7 @@ object DnsController {
 
     fun select(ctx: Context, p: Provider) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(PREF_PROVIDER, p.name).apply()
+        DnsWidget.updateAll(ctx)
     }
 
     /** 지금 시스템에 적용되어 있는 제공자. 우리가 관리하는 호스트가 아니면 null (꺼짐 취급). */
@@ -70,6 +71,7 @@ object DnsController {
             Settings.Global.putString(r, KEY_MODE, "opportunistic")
         }
         if (!ok) error("설정을 저장하지 못했습니다")
+        DnsWidget.updateAll(ctx)
         enable
     }
 }

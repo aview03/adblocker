@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "AdBlocker-thinkgood"
+rootProject.name = "AdBlocker"
 include(":app")

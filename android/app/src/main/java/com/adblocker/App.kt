@@ -1,4 +1,4 @@
-package com.thinkgood.adblocker
+package com.adblocker
 
 import android.content.pm.ApplicationInfo
 import android.util.Log

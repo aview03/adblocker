@@ -1,4 +1,4 @@
-package com.thinkgood.adblocker
+package com.adblocker
 
 import android.app.PendingIntent
 import android.content.Intent

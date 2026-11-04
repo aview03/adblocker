@@ -1,4 +1,4 @@
-package com.thinkgood.adblocker
+package com.adblocker
 
 import android.content.ClipData
 import android.content.ClipboardManager

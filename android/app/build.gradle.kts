@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.thinkgood.adblocker"
+    namespace = "com.adblocker"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.thinkgood.adblocker"
+        applicationId = "com.adblocker"
         minSdk = 30
         targetSdk = 36
         versionCode = 1

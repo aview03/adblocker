@@ -1,4 +1,4 @@
-package com.thinkgood.adblocker
+package com.adblocker
 
 import android.content.ComponentName
 import android.content.Context
@@ -451,7 +451,7 @@ object VpnController {
         blRemove(ctx, server.ip)
         s.onEvent(VpnEvent.Attempt(s.n, server.ip, true, "연결", secsSince(s.attemptStart)))
         val total = secsSince(s.t0)
-        finish(ctx, s, stop = false) { s.onConnected(server.ip, total) }
+        finish(ctx, s, stop = false) { s.onConnected(server.ip, total); refreshWidgets(ctx) }
     }
 
     private fun attemptFailed(ctx: Context, s: Session, server: VpnServer, reason: String, ttlMs: Long, stop: Boolean = true) {
@@ -512,6 +512,13 @@ object VpnController {
     fun disconnect(ctx: Context) {
         cancelSession(ctx.applicationContext, stopTunnel = false)
         stopTunnel(ctx.applicationContext)
+        refreshWidgets(ctx)
+    }
+
+    /** VPN 상태는 시스템이 잠시 뒤에 반영하므로 약간 기다렸다가 위젯을 다시 그린다. */
+    private fun refreshWidgets(ctx: Context) {
+        val app = ctx.applicationContext
+        main.postDelayed({ DnsWidget.updateAll(app) }, 1500)
     }
 
     /** OpenVPNService 에 바인드해서 터널을 내린다. */

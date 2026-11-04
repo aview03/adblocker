@@ -205,7 +205,7 @@ fn b64_decode(s: &str) -> Option<Vec<u8>> {
 }
 
 fn data_dir() -> Option<PathBuf> {
-    let d = std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("AdBlocker-thinkgood"))?;
+    let d = std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("AdBlocker"))?;
     std::fs::create_dir_all(&d).ok()?;
     Some(d)
 }

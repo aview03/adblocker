@@ -1,4 +1,10 @@
 <resources>
-    <string name="app_name">AdBlocker-thinkgood</string>
+    <string name="app_name">AdBlocker</string>
     <string name="tile_label">AdGuard DNS</string>
+    <string name="widget_label_2x1">AdBlocker 2x1</string>
+    <string name="widget_label_4x1">AdBlocker 4x1</string>
+    <string name="widget_label_5x1">AdBlocker 5x1</string>
+    <string name="widget_desc_2x1">DNS 보호 켜기/끄기 (작게)</string>
+    <string name="widget_desc_4x1">DNS 보호 켜기/끄기</string>
+    <string name="widget_desc_5x1">DNS 보호 켜기/끄기 (넓게)</string>
 </resources>

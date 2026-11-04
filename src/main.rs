@@ -56,7 +56,7 @@ const PROVIDERS: [Provider; 3] = [
 ];
 
 fn pref_path() -> Option<std::path::PathBuf> {
-    std::env::var_os("APPDATA").map(|d| std::path::PathBuf::from(d).join("AdBlocker-thinkgood").join("provider.txt"))
+    std::env::var_os("APPDATA").map(|d| std::path::PathBuf::from(d).join("AdBlocker").join("provider.txt"))
 }
 
 fn load_selected() -> usize {
@@ -143,33 +143,13 @@ fn set_autostart(enable: bool) -> Result<(), String> {
 
 // ---------- icons ----------
 
-fn icon_rgba(color: Color32, size: u32) -> Vec<u8> {
-    let s = size as f32;
-    let (cx, cy) = (s / 2.0 - 0.5, s / 2.0 - 0.5);
-    let corner = s * 0.14;
-    let mut px = Vec::with_capacity((size * size * 4) as usize);
-    for y in 0..size {
-        for x in 0..size {
-            let (fx, fy) = (x as f32, y as f32);
-            let (dx, dy) = ((fx - cx).abs() - (s / 2.0 - corner), (fy - cy).abs() - (s / 2.0 - corner));
-            let outside = dx.max(0.0).hypot(dy.max(0.0)) > corner;
-            let d = (fx - cx).hypot(fy - cy);
-            let ring = d < s * 0.30 && d > s * 0.18;
-            let rgba = if outside {
-                [0, 0, 0, 0]
-            } else if ring {
-                [255, 255, 255, 255]
-            } else {
-                [color.r(), color.g(), color.b(), 255]
-            };
-            px.extend_from_slice(&rgba);
-        }
-    }
-    px
-}
-
 fn tray_icon_for(on: bool) -> Icon {
-    Icon::from_rgba(icon_rgba(if on { RED } else { BLACK }, 32), 32, 32).unwrap()
+    let rgba: &[u8] = if on {
+        include_bytes!("../assets/icon32.rgba")
+    } else {
+        include_bytes!("../assets/icon32_off.rgba")
+    };
+    Icon::from_rgba(rgba.to_vec(), 32, 32).unwrap()
 }
 
 // ---------- app ----------
@@ -265,7 +245,7 @@ impl App {
         let tray = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_menu_on_left_click(false)
-            .with_tooltip("AdBlocker-thinkgood")
+            .with_tooltip("AdBlocker")
             .with_icon(tray_icon_for(false))
             .build()
             .unwrap();
@@ -673,70 +653,76 @@ impl eframe::App for App {
                 return;
             }
 
-            // main button
-            let (text, fill) = if self.dns_on { ("끄기", BLACK) } else { ("켜기", RED) };
-            let btn = egui::Button::new(
-                RichText::new(if self.busy { "처리 중…" } else { text }).size(16.0).strong().color(WHITE),
-            )
-            .fill(fill)
-            .corner_radius(CornerRadius::same(R))
-            .min_size(Vec2::new(ui.available_width(), 46.0));
-            if ui.add_enabled(!self.busy, btn).clicked() {
-                if self.dns_on {
-                    self.toggle_dns(&ctx);
-                } else {
-                    self.request_dns_on(&ctx);
-                }
-            }
-            if let Some(e) = &self.error {
-                ui.add_space(8.0);
-                ui.label(RichText::new(e).size(11.0).color(RED));
-            }
-
-            ui.add_space(20.0);
-            divider(ui);
-            ui.add_space(12.0);
-
-            // provider
-            ui.label(RichText::new("DNS 제공자").size(12.0).color(GRAY));
-            ui.add_space(4.0);
-            for (i, p) in PROVIDERS.iter().enumerate() {
-                if provider_row(ui, p, i == self.sel, !self.busy) {
-                    self.select_provider(&ctx, i);
-                }
-                ui.add_space(4.0);
-            }
-
-            ui.add_space(8.0);
-            divider(ui);
-            ui.add_space(12.0);
-
-            // options
-            let mut auto = self.autostart;
-            if switch_row(ui, "시작 프로그램으로 등록", &mut auto, !self.busy) {
-                self.toggle_autostart(&ctx);
-            }
-            ui.add_space(6.0);
-            let tray_btn = egui::Button::new(RichText::new("트레이로 내리기").color(BLACK))
-                .fill(WHITE)
-                .stroke(Stroke::new(1.0, BLACK))
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                // main button
+                let (text, fill) = if self.dns_on { ("끄기", BLACK) } else { ("켜기", RED) };
+                let btn = egui::Button::new(
+                    RichText::new(if self.busy { "처리 중…" } else { text }).size(16.0).strong().color(WHITE),
+                )
+                .fill(fill)
                 .corner_radius(CornerRadius::same(R))
-                .min_size(Vec2::new(ui.available_width(), 34.0));
-            if ui.add(tray_btn).clicked() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
-            }
+                .min_size(Vec2::new(ui.available_width(), 46.0));
+                if ui.add_enabled(!self.busy, btn).clicked() {
+                    if self.dns_on {
+                        self.toggle_dns(&ctx);
+                    } else {
+                        self.request_dns_on(&ctx);
+                    }
+                }
+                if let Some(e) = &self.error {
+                    ui.add_space(8.0);
+                    ui.label(RichText::new(e).size(11.0).color(RED));
+                }
 
-            ui.add_space(12.0);
-            divider(ui);
-            ui.add_space(12.0);
+                ui.add_space(20.0);
+                divider(ui);
+                ui.add_space(12.0);
 
-            // servers
-            ui.label(RichText::new("서버").size(12.0).color(GRAY));
-            let cur = &PROVIDERS[self.sel];
-            ui.label(RichText::new(cur.host).size(12.0).color(BLACK));
-            for a in cur.v4.iter().chain(cur.v6.iter()) {
-                ui.label(RichText::new(*a).monospace().size(12.0).color(BLACK));
-            }
+                // provider
+                ui.label(RichText::new("DNS 제공자").size(12.0).color(GRAY));
+                ui.add_space(4.0);
+                for (i, p) in PROVIDERS.iter().enumerate() {
+                    if provider_row(ui, p, i == self.sel, !self.busy) {
+                        self.select_provider(&ctx, i);
+                    }
+                    ui.add_space(4.0);
+                }
+
+                ui.add_space(8.0);
+                divider(ui);
+                ui.add_space(12.0);
+
+                // options
+                let mut auto = self.autostart;
+                if switch_row(ui, "시작 프로그램으로 등록", &mut auto, !self.busy) {
+                    self.toggle_autostart(&ctx);
+                }
+                ui.add_space(6.0);
+                let tray_btn = egui::Button::new(RichText::new("트레이로 내리기").color(BLACK))
+                    .fill(WHITE)
+                    .stroke(Stroke::new(1.0, BLACK))
+                    .corner_radius(CornerRadius::same(R))
+                    .min_size(Vec2::new(ui.available_width(), 34.0));
+                if ui.add(tray_btn).clicked() {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+                }
+
+                ui.add_space(12.0);
+                divider(ui);
+                ui.add_space(12.0);
+
+                // servers
+                let cur = &PROVIDERS[self.sel];
+                egui::CollapsingHeader::new(RichText::new("서버 정보").size(12.0).color(GRAY))
+                    .id_salt("server_info")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        ui.label(RichText::new(cur.host).size(12.0).color(BLACK));
+                        for a in cur.v4.iter().chain(cur.v6.iter()) {
+                            ui.label(RichText::new(*a).monospace().size(12.0).color(BLACK));
+                        }
+                    });
+            });
         });
 
         self.switch_modal(&ctx);
@@ -1225,10 +1211,10 @@ fn setup_style(ctx: &egui::Context) {
 
 fn main() -> eframe::Result {
     let hidden = std::env::args().any(|a| a == "--tray");
-    let icon = egui::IconData { rgba: icon_rgba(RED, 64), width: 64, height: 64 };
+    let icon = egui::IconData { rgba: include_bytes!("../assets/icon64.rgba").to_vec(), width: 64, height: 64 };
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("AdBlocker-thinkgood")
+            .with_title("AdBlocker")
             .with_inner_size([340.0, 700.0])
             .with_resizable(false)
             .with_maximize_button(false)
@@ -1236,5 +1222,5 @@ fn main() -> eframe::Result {
             .with_icon(icon),
         ..Default::default()
     };
-    eframe::run_native("AdBlocker-thinkgood", options, Box::new(|cc| Ok(Box::new(App::new(cc)))))
+    eframe::run_native("AdBlocker", options, Box::new(|cc| Ok(Box::new(App::new(cc)))))
 }

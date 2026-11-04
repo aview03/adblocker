@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Private DNS 설정(Settings.Global) 쓰기용. 일반 설치로는 부여되지 않고
-         PC에서 한 번 `adb shell pm grant com.thinkgood.adblocker android.permission.WRITE_SECURE_SETTINGS` 필요 -->
+         PC에서 한 번 `adb shell pm grant com.adblocker android.permission.WRITE_SECURE_SETTINGS` 필요 -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" xmlns:tools="http://schemas.android.com/tools" />
 
@@ -66,5 +66,42 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
+
+        <!-- 홈 화면 위젯 -->
+        <receiver
+            android:name=".DnsWidget2x1"
+            android:exported="false"
+            android:label="@string/widget_label_2x1">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_2x1_info" />
+        </receiver>
+
+        <receiver
+            android:name=".DnsWidget4x1"
+            android:exported="false"
+            android:label="@string/widget_label_4x1">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_4x1_info" />
+        </receiver>
+
+        <receiver
+            android:name=".DnsWidget5x1"
+            android:exported="false"
+            android:label="@string/widget_label_5x1">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_5x1_info" />
+        </receiver>
     </application>
 </manifest>
