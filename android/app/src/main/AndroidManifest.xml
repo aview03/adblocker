@@ -1,14 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Private DNS 설정(Settings.Global) 쓰기용. 일반 설치로는 부여되지 않고
          PC에서 한 번 `adb shell pm grant com.thinkgood.adblocker android.permission.WRITE_SECURE_SETTINGS` 필요 -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" xmlns:tools="http://schemas.android.com/tools" />
 
+    <!-- VPN Gate 서버 목록 다운로드 / VPN 사용 여부 확인 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- 내장 OpenVPN 코어(AAR)가 끌어오는 불필요한 권한 제거.
+         단 RECEIVE_BOOT_COMPLETED 는 유지: 코어의 keepVPNAlive 가 persisted job 을 등록하는데
+         이 권한이 없으면 :openvpn 프로세스가 IllegalArgumentException 으로 죽는다.
+         (부팅 시 자동 시작 리시버 OnBootReceiver 는 아래에서 제거됨) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" tools:node="remove" />
+
     <application
+        android:name=".App"
+        tools:replace="android:name,android:allowBackup,android:icon,android:roundIcon,android:label,android:theme,android:supportsRtl,android:appCategory"
+        android:appCategory="productivity"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
@@ -21,6 +38,22 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 코어가 외부 앱에 노출하는 컴포넌트(원격 제어 API, 부팅 자동 시작, 외부 실행용 액티비티)는 쓰지 않으므로 제거 -->
+        <service android:name="de.blinkt.openvpn.api.ExternalOpenVPNService" tools:node="remove" />
+        <activity android:name="de.blinkt.openvpn.api.GrantPermissionsActivity" tools:node="remove" />
+        <activity android:name="de.blinkt.openvpn.api.ConfirmDialog" tools:node="remove" />
+        <activity android:name="de.blinkt.openvpn.api.RemoteAction" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.api.SetDefaultVPN" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.api.ResumeVPN" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.api.PauseVPN" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.api.DisconnectVPN" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.api.ConnectVPN" tools:node="remove" />
+        <receiver android:name="de.blinkt.openvpn.OnBootReceiver" tools:node="remove" />
+        <activity android:name="de.blinkt.openvpn.LaunchVPN" tools:node="remove" />
+        <activity android:name="de.blinkt.openvpn.activities.NotImplemented" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.activities.Req" tools:node="remove" />
+        <activity-alias android:name="de.blinkt.openvpn.activities.LogWindow" tools:node="remove" />
 
         <!-- 빠른 설정 타일 (Windows의 트레이 아이콘 역할) -->
         <service

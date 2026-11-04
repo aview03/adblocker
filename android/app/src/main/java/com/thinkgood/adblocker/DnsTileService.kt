@@ -26,7 +26,11 @@ class DnsTileService : TileService() {
         tile.state = if (on) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
         val p = DnsController.active(this) ?: DnsController.selected(this)
         tile.label = "${p.label} DNS"
-        tile.subtitle = if (on) "보호 중" else "꺼짐"
+        tile.subtitle = when {
+            VpnController.isActive(this) -> "VPN 사용중"
+            on -> "보호 중"
+            else -> "꺼짐"
+        }
         tile.updateTile()
     }
 
