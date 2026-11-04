@@ -183,6 +183,8 @@ enum Msg {
     VpnEnded(u64),
     /// 접속 진행 상황(탐색/시도별 결과)
     VpnEvent(u64, vpn::Event),
+    /// 내장 패키지로 OpenVPN 설치를 마쳤다.
+    OpenVpnReady(std::path::PathBuf),
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -416,10 +418,7 @@ impl App {
 
     /// 사용자가 경고 모달에서 "접속"을 눌렀을 때만 호출된다.
     fn connect_vpn(&mut self, ctx: &egui::Context, country_idx: usize) {
-        let Some(exe) = self.openvpn.clone() else {
-            self.error = Some("OpenVPN 이 설치되어 있지 않습니다".into());
-            return;
-        };
+        let exe = self.openvpn.clone(); // 없으면 접속 스레드에서 내장 패키지로 설치한다
         let VpnList::Ready(list) = &self.vpn_list else { return };
         let Some(country) = list.countries.get(country_idx) else { return };
         let label = country.label().to_string();
@@ -445,6 +444,23 @@ impl App {
             let on_event = move |e: vpn::Event| {
                 let _ = tx3.send(Msg::VpnEvent(id, e));
                 ctx3.request_repaint();
+            };
+            let exe = match exe {
+                Some(e) => e,
+                None => {
+                    on_event(vpn::Event::Installing);
+                    match vpn::install_openvpn() {
+                        Ok(p) => {
+                            let _ = tx.send(Msg::OpenVpnReady(p.clone()));
+                            p
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Msg::VpnResult(id, label, Err(e)));
+                            ctx.request_repaint();
+                            return;
+                        }
+                    }
+                }
             };
             let res = vpn::connect(&exe, &short, &handle, &cancel, &on_event, move || {
                 let _ = tx2.send(Msg::VpnEnded(id));
@@ -515,6 +531,9 @@ impl App {
                     }
                 }
                 Msg::VpnEvent(id, e) if id == self.vpn_id => match e {
+                    vpn::Event::Installing => {
+                        self.vpn_note = "OpenVPN 구성요소 설치 중 (처음 한 번)".to_string();
+                    }
                     vpn::Event::Probe { alive, total, secs } => {
                         self.vpn_note = format!("탐색 {secs:.1}초 · 응답 {alive}/{total}");
                     }
@@ -549,6 +568,7 @@ impl App {
                     self.vpn_conn = None;
                     self.update_tray();
                 }
+                Msg::OpenVpnReady(p) => self.openvpn = Some(p),
                 Msg::VpnResult(..) | Msg::VpnEnded(_) | Msg::VpnEvent(..) => {}
             }
         }
@@ -746,7 +766,7 @@ impl App {
             VpnState::Off => ("켜기", RED, WHITE),
         };
         let enabled = match self.vpn {
-            VpnState::Off => sel_idx.is_some() && self.openvpn.is_some() && !self.busy,
+            VpnState::Off => sel_idx.is_some() && !self.busy,
             _ => true,
         };
         let mut btn = egui::Button::new(RichText::new(text).size(16.0).strong().color(fg))
@@ -796,15 +816,6 @@ impl App {
             ui.add_space(4.0);
             ui.label(RichText::new(e).size(11.0).color(RED));
         }
-        if self.openvpn.is_none() {
-            ui.add_space(4.0);
-            ui.label(
-                RichText::new("OpenVPN 이 필요합니다. openvpn.net 에서 설치한 뒤 앱을 다시 실행하세요.")
-                    .size(11.0)
-                    .color(RED),
-            );
-        }
-
         ui.add_space(16.0);
         divider(ui);
         ui.add_space(12.0);
@@ -911,6 +922,7 @@ impl App {
             self.vpn_confirm = None;
             return;
         };
+        let first_run = self.openvpn.is_none();
         let (mut connect, mut cancel) = (false, false);
         let modal = egui::Modal::new(egui::Id::new("vpn_confirm")).show(ctx, |ui| {
             ui.set_width(270.0);
@@ -925,6 +937,14 @@ impl App {
                 "해당 국가의 법과 VPN Gate 이용 약관을 지켜야 합니다.",
             ] {
                 ui.label(RichText::new(format!("• {t}")).size(12.0).color(BLACK));
+                ui.add_space(3.0);
+            }
+            if first_run {
+                ui.label(
+                    RichText::new("• 처음 접속할 때 OpenVPN 과 TAP 네트워크 드라이버(약 6MB)를 자동으로 설치합니다.")
+                        .size(12.0)
+                        .color(RED),
+                );
                 ui.add_space(3.0);
             }
             ui.add_space(10.0);

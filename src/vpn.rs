@@ -5,8 +5,8 @@
 //! - config 는 자원봉사자가 만든 외부 입력이므로 허용 목록(allowlist)에 있는 지시어만 통과시킨다.
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
-use std::net::{TcpStream, ToSocketAddrs, UdpSocket};
+use std::io::{BufRead, BufReader, Write};
+use std::net::{TcpListener, TcpStream, ToSocketAddrs, UdpSocket};
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -164,6 +164,14 @@ fn rand_u64() -> u64 {
     x ^= x >> 7;
     x ^= x << 17;
     x
+}
+
+/// OS 가 시드한 RandomState 에서 얻는 64비트 값 (비밀번호 용도로 시간 기반 난수보다 낫다).
+fn secure_u64() -> u64 {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u64(rand_u64());
+    h.finish()
 }
 
 fn shuffle<T>(v: &mut [T]) {
@@ -499,7 +507,38 @@ fn bl_remove(ip: &str) {
 
 // ---------- 연결 ----------
 
-pub type Handle = Arc<Mutex<Option<Child>>>;
+/// 앱에 내장된 OpenVPN 공식 Windows 설치 패키지 (third_party/openvpn/README.md 참고).
+static OPENVPN_MSI: &[u8] = include_bytes!("../third_party/openvpn/OpenVPN-2.7.8-I002-amd64.msi");
+
+/// 내장 설치 패키지로 OpenVPN(코어 + TAP-Windows6 드라이버)을 조용히 설치한다. (블로킹, 관리자 권한 필요)
+pub fn install_openvpn() -> Result<PathBuf, String> {
+    let dir = data_dir().ok_or("APPDATA 를 찾을 수 없습니다")?;
+    let msi = dir.join("openvpn-setup.msi");
+    std::fs::write(&msi, OPENVPN_MSI).map_err(|e| e.to_string())?;
+    let out = Command::new("msiexec")
+        .arg("/i")
+        .arg(&msi)
+        .args(["/qn", "/norestart", "ADDLOCAL=OpenVPN,Drivers,Drivers.TAPWindows6"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    let _ = std::fs::remove_file(&msi);
+    let out = out.map_err(|e| format!("msiexec 실행 실패: {e}"))?;
+    match out.status.code() {
+        // 3010 = 성공(재부팅 권장)
+        Some(0) | Some(3010) => find_openvpn().ok_or_else(|| "설치는 끝났지만 openvpn.exe 를 찾지 못했습니다".to_string()),
+        Some(c) => Err(format!("OpenVPN 설치에 실패했습니다 (msiexec 코드 {c})")),
+        None => Err("OpenVPN 설치가 중단되었습니다".to_string()),
+    }
+}
+
+/// 실행 중인 OpenVPN 과 그 로컬 관리 인터페이스(정상 종료용).
+pub struct Tunnel {
+    child: Child,
+    port: u16,
+    pass: String,
+}
+
+pub type Handle = Arc<Mutex<Option<Tunnel>>>;
 
 pub struct Connected {
     pub ip: String,
@@ -516,6 +555,8 @@ pub struct Attempt {
 }
 
 pub enum Event {
+    /// OpenVPN 이 없어서 내장 패키지를 설치하는 중.
+    Installing,
     Probe { alive: usize, total: usize, secs: f32 },
     Attempt(Attempt),
     /// 후보가 모두 실패해서 목록을 일찍 새로 받았다.
@@ -551,11 +592,25 @@ fn try_server(
     std::fs::write(cfg_path, cfg).map_err(|e| TryErr::Fatal(e.to_string()))?;
     std::fs::write(auth_path, "vpn\nvpn\n").map_err(|e| TryErr::Fatal(e.to_string()))?;
 
+    // 정상 종료(라우팅/DNS 정리)용 로컬 관리 인터페이스: 127.0.0.1 + 무작위 포트 + 무작위 비밀번호
+    let port = TcpListener::bind("127.0.0.1:0")
+        .and_then(|l| l.local_addr())
+        .map(|a| a.port())
+        .map_err(|e| TryErr::Fatal(format!("관리 포트를 열 수 없습니다: {e}")))?;
+    let pass = format!("{:016x}{:016x}", secure_u64(), secure_u64());
+    let mgmt_path = auth_path.with_file_name("vpn-session.mgmt");
+    std::fs::write(&mgmt_path, format!("{pass}\n")).map_err(|e| TryErr::Fatal(e.to_string()))?;
+
     let spawned = Command::new(exe)
         .arg("--config")
         .arg(cfg_path)
         .arg("--auth-user-pass")
         .arg(auth_path)
+        .args(["--management", "127.0.0.1", &port.to_string()])
+        .arg(&mgmt_path)
+        // OpenVPN 2.7 의 기본 드라이버는 DCO 이고 Wintun 지원은 제거됐다. VPN Gate 는 CBC 암호라 DCO 를
+        // 쓸 수 없으므로(폴백되긴 하지만) 처음부터 TAP-Windows6 를 쓰도록 DCO 를 끈다.
+        .arg("--disable-dco")
         .args(["--script-security", "0", "--verb", "3", "--connect-retry-max", "1"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -567,6 +622,7 @@ fn try_server(
         Err(e) => {
             let _ = std::fs::remove_file(cfg_path);
             let _ = std::fs::remove_file(auth_path);
+            let _ = std::fs::remove_file(&mgmt_path);
             return Err(TryErr::Fatal(format!("OpenVPN 실행 실패: {e}")));
         }
     };
@@ -610,9 +666,10 @@ fn try_server(
     // 키/인증서가 든 임시 config 는 더 이상 필요 없다.
     let _ = std::fs::remove_file(cfg_path);
     let _ = std::fs::remove_file(auth_path);
+    let _ = std::fs::remove_file(&mgmt_path); // 비밀번호는 시작 시 한 번만 읽는다
 
     if outcome.is_ok() {
-        *handle.lock().unwrap() = Some(child);
+        *handle.lock().unwrap() = Some(Tunnel { child, port, pass });
         if let Some(on_end) = on_end.take() {
             std::thread::spawn(move || {
                 while rx.recv().is_ok() {}
@@ -705,12 +762,23 @@ pub fn connect(
     }
 }
 
-/// 연결 중인 OpenVPN 프로세스를 종료한다.
+/// 연결 중인 OpenVPN 을 종료한다. 먼저 관리 인터페이스로 SIGTERM 을 보내 라우팅/DNS 를 정리하게 하고,
+/// 4초 안에 끝나지 않으면 강제 종료한다.
 pub fn disconnect(handle: &Handle) {
-    if let Some(mut c) = handle.lock().unwrap().take() {
-        let _ = c.kill();
-        let _ = c.wait();
+    let Some(mut t) = handle.lock().unwrap().take() else { return };
+    if let Ok(mut sock) = TcpStream::connect_timeout(&([127, 0, 0, 1], t.port).into(), Duration::from_secs(1)) {
+        let _ = sock.write_all(format!("{}\nsignal SIGTERM\n", t.pass).as_bytes());
+        let _ = sock.flush();
     }
+    let deadline = Instant::now() + Duration::from_secs(4);
+    while Instant::now() < deadline {
+        if matches!(t.child.try_wait(), Ok(Some(_))) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let _ = t.child.kill();
+    let _ = t.child.wait();
 }
 
 #[cfg(test)]
